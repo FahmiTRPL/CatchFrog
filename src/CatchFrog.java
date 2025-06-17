@@ -279,7 +279,7 @@ class GameOverMenu extends JFrame {
 
         JLabel scoreLabel = new JLabel("Your Score: " + score, JLabel.CENTER);
         JLabel retryLabel = new JLabel("Retry ke-" + retryCount, JLabel.CENTER);
-        JButton retryButton = new JButton("Retry speed +15%");
+        JButton retryButton = new JButton("Retry, speed +15% FrogSpawn 30%, Collusion + 1");
         JButton highScoresButton = new JButton("High Scores");
         JButton exitButton = new JButton("Exit");
 
