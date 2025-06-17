@@ -45,6 +45,15 @@ class ScoreStorage {
         }
         return scores;
     }
+
+    public static void clearScores() {
+        try {
+            PrintWriter writer = new PrintWriter(new FileWriter(FILE_PATH));
+            writer.close();
+        } catch (IOException e) {
+            logger.log(Level.SEVERE, "Failed to clear scores", e);
+        }
+    }
 }
 
 class MainMenu extends JFrame {
@@ -53,11 +62,12 @@ class MainMenu extends JFrame {
         setSize(400, 300);
         setDefaultCloseOperation(EXIT_ON_CLOSE);
         setLocationRelativeTo(null);
-        setLayout(new GridLayout(3, 1));
+        setLayout(new GridLayout(4, 1));
 
         JLabel title = new JLabel("Catch Frog", JLabel.CENTER);
         title.setFont(new Font("Arial", Font.BOLD, 24));
         JButton startButton = new JButton("Start Game");
+        JButton highScoreButton = new JButton("High Scores");
         JButton exitButton = new JButton("Exit");
 
         startButton.addActionListener(e -> {
@@ -65,10 +75,13 @@ class MainMenu extends JFrame {
             new GameFrame();
         });
 
+        highScoreButton.addActionListener(e -> new HighScoreMenu(ScoreStorage.loadScores(), 0));
+
         exitButton.addActionListener(e -> System.exit(0));
 
         add(title);
         add(startButton);
+        add(highScoreButton);
         add(exitButton);
 
         setVisible(true);
@@ -77,52 +90,62 @@ class MainMenu extends JFrame {
 
 class GameFrame extends JFrame {
     ArrayList<Integer> scoreHistory;
+    int retryCount;
 
     public GameFrame() {
-        this(ScoreStorage.loadScores());  // ⬅️ muat skor dari file
+        this(ScoreStorage.loadScores(), 1);
     }
 
-    public GameFrame(ArrayList<Integer> scoreHistory) {
+    public GameFrame(ArrayList<Integer> scoreHistory, int retryCount) {
         this.scoreHistory = scoreHistory;
+        this.retryCount = retryCount;
+
         setTitle("Catch Frog Game");
         setSize(1280, 720);
         setDefaultCloseOperation(EXIT_ON_CLOSE);
         setLocationRelativeTo(null);
 
-        GamePanel panel = new GamePanel(this, scoreHistory);
+        GamePanel panel = new GamePanel(this, scoreHistory, retryCount);
         add(panel);
         setVisible(true);
     }
 }
 
-
-
 class GamePanel extends JPanel implements ActionListener, KeyListener {
+    int retryCount;
     boolean leftPressed = false;
     boolean rightPressed = false;
     boolean upPressed = false;
     boolean downPressed = false;
 
+    int velocity;
+    int baseVelocity = 20;
+    int baseFrogs = 120;
+    int baseWalls = 10;
+
     int playerX = 100, playerY = 100, playerSize = 30;
-    int velocity = 20;
     Timer timer;
     Timer gameTimer;
     int timeLeft = 10;
     int score = 0;
 
     ArrayList<Rectangle> walls = new ArrayList<>();
-    ArrayList<Point> coins = new ArrayList<>();
+    ArrayList<Point> frogs = new ArrayList<>();
     ArrayList<Integer> scoreHistory;
     JFrame parent;
 
-    public GamePanel(JFrame parent, ArrayList<Integer> scoreHistory) {
+    public GamePanel(JFrame parent, ArrayList<Integer> scoreHistory, int retryCount) {
         this.parent = parent;
         this.scoreHistory = scoreHistory;
+        this.retryCount = retryCount;
+
         setBackground(Color.GRAY);
         setFocusable(true);
         addKeyListener(this);
+
+        this.velocity = (int) (baseVelocity * (1 + retryCount * 0.15));
         spawnWalls();
-        spawnCoins();
+        spawnFrogs();
 
         timer = new Timer(16, this);
         timer.start();
@@ -132,9 +155,9 @@ class GamePanel extends JPanel implements ActionListener, KeyListener {
             if (timeLeft <= 0) {
                 timer.stop();
                 gameTimer.stop();
-                scoreHistory.add(score);                  // ⬅️ tambahkan skor
-                ScoreStorage.saveScores(scoreHistory);    // ⬅️ simpan ke file
-                new GameOverMenu(score, scoreHistory, parent);
+                scoreHistory.add(score);
+                ScoreStorage.saveScores(scoreHistory);
+                new GameOverMenu(score, scoreHistory, parent, retryCount);
             }
             repaint();
         });
@@ -142,15 +165,36 @@ class GamePanel extends JPanel implements ActionListener, KeyListener {
     }
 
     void spawnWalls() {
-        walls.add(new Rectangle(200, 150, 100, 20));
-        walls.add(new Rectangle(400, 300, 150, 20));
-        walls.add(new Rectangle(300, 450, 200, 20));
+        walls.clear();
+        Random rand = new Random();
+
+        int jumlahWall = baseWalls + retryCount;
+        int maxWidth = 200;
+        int minWidth = 100;
+        int wallHeight = 20;
+
+        for (int i = 0; i < jumlahWall; i++) {
+            int width = rand.nextInt(maxWidth - minWidth + 1) + minWidth;
+            int x = rand.nextInt(1280 - width);
+            int y = rand.nextInt(720 - wallHeight);
+
+            Rectangle newWall = new Rectangle(x, y, width, wallHeight);
+
+            Rectangle playerStartZone = new Rectangle(playerX - 50, playerY - 50, 150, 150);
+            if (!newWall.intersects(playerStartZone)) {
+                walls.add(newWall);
+            } else {
+                i--;
+            }
+        }
     }
 
-    void spawnCoins() {
+    void spawnFrogs() {
+        frogs.clear();
         Random rand = new Random();
-        for (int i = 0; i < 60; i++) {
-            coins.add(new Point(rand.nextInt(750), rand.nextInt(550)));
+        int jumlahFrogs = (int) (baseFrogs * (1 + retryCount * 0.3));
+        for (int i = 0; i < jumlahFrogs; i++) {
+            frogs.add(new Point(rand.nextInt(1280), rand.nextInt(720)));
         }
     }
 
@@ -158,23 +202,19 @@ class GamePanel extends JPanel implements ActionListener, KeyListener {
     protected void paintComponent(Graphics g) {
         super.paintComponent(g);
 
-        // Draw player
         g.setColor(Color.BLUE);
         g.fillRect(playerX, playerY, playerSize, playerSize);
 
-        // Draw coins
         g.setColor(Color.GREEN);
-        for (Point p : coins) {
+        for (Point p : frogs) {
             g.fillOval(p.x, p.y, 30, 30);
         }
 
-        // Draw walls
         g.setColor(Color.BLACK);
         for (Rectangle r : walls) {
             g.fillRect(r.x, r.y, r.width, r.height);
         }
 
-        // Draw score and timer
         g.setColor(Color.WHITE);
         g.setFont(new Font("Arial", Font.BOLD, 18));
         g.drawString("Score: " + score, 10, 20);
@@ -201,10 +241,9 @@ class GamePanel extends JPanel implements ActionListener, KeyListener {
             }
         }
 
-        // Hitbox coin 30x30 (sesuai oval)
-        coins.removeIf(p -> {
-            Rectangle coinRect = new Rectangle(p.x, p.y, 30, 30);
-            if (playerRect.intersects(coinRect)) {
+        frogs.removeIf(p -> {
+            Rectangle FrogsRect = new Rectangle(p.x, p.y, 30, 30);
+            if (playerRect.intersects(FrogsRect)) {
                 score++;
                 return true;
             }
@@ -232,28 +271,29 @@ class GamePanel extends JPanel implements ActionListener, KeyListener {
 }
 
 class GameOverMenu extends JFrame {
-    public GameOverMenu(int score, ArrayList<Integer> history, JFrame parent) {
+    public GameOverMenu(int score, ArrayList<Integer> history, JFrame parent, int retryCount) {
         setTitle("Game Over");
         setSize(400, 300);
         setLocationRelativeTo(null);
-        setLayout(new GridLayout(5, 1));
+        setLayout(new GridLayout(6, 1));
 
-        JLabel scoreLabel = new JLabel("Game Over! Your Score: " + score, JLabel.CENTER);
-        JButton retryButton = new JButton("Retry");
+        JLabel scoreLabel = new JLabel("Your Score: " + score, JLabel.CENTER);
+        JLabel retryLabel = new JLabel("Retry ke-" + retryCount, JLabel.CENTER);
+        JButton retryButton = new JButton("Retry speed +15%");
         JButton highScoresButton = new JButton("High Scores");
         JButton exitButton = new JButton("Exit");
 
         retryButton.addActionListener(e -> {
             dispose();
             parent.dispose();
-            new GameFrame(history);  // ⬅️ Gunakan konstruktor dengan parameter!
+            new GameFrame(history, retryCount + 1);
         });
 
-
-        highScoresButton.addActionListener(e -> new HighScoreMenu(history));
+        highScoresButton.addActionListener(e -> new HighScoreMenu(history, retryCount));
         exitButton.addActionListener(e -> System.exit(0));
 
         add(scoreLabel);
+        add(retryLabel);
         add(retryButton);
         add(highScoresButton);
         add(exitButton);
@@ -263,7 +303,9 @@ class GameOverMenu extends JFrame {
 }
 
 class HighScoreMenu extends JFrame {
-    public HighScoreMenu(ArrayList<Integer> scores) {
+    private final JTextArea scoreArea;
+
+    public HighScoreMenu(ArrayList<Integer> scores, int retryCount) {
         setTitle("High Scores");
         setSize(800, 600);
         setLocationRelativeTo(null);
@@ -271,10 +313,11 @@ class HighScoreMenu extends JFrame {
 
         scores.sort(Collections.reverseOrder());
 
-        JTextArea scoreArea = new JTextArea();
+        scoreArea = new JTextArea();
         scoreArea.setEditable(false);
 
         StringBuilder sb = new StringBuilder("High Scores:\n");
+        sb.append("Retry terakhir: ").append(retryCount).append("\n\n");
         int rank = 1;
         for (int s : scores) {
             sb.append(rank++).append(". ").append(s).append("\n");
@@ -283,10 +326,37 @@ class HighScoreMenu extends JFrame {
         scoreArea.setText(sb.toString());
         add(new JScrollPane(scoreArea), BorderLayout.CENTER);
 
-        JButton closeButton = new JButton("Close");
-        closeButton.addActionListener(e -> dispose());
-        add(closeButton, BorderLayout.SOUTH);
+        JPanel buttonPanel = createButtonPanel(scores);
+        add(buttonPanel, BorderLayout.SOUTH);
 
         setVisible(true);
+    }
+
+    private JPanel createButtonPanel(ArrayList<Integer> scores) {
+        JPanel panel = new JPanel(new FlowLayout());
+
+        JButton clearButton = new JButton("Clear Scores");
+        JButton closeButton = new JButton("Close");
+
+        clearButton.addActionListener(e -> {
+            int result = JOptionPane.showConfirmDialog(
+                    this,
+                    "Apakah Anda yakin ingin menghapus seluruh skor?",
+                    "Konfirmasi Hapus",
+                    JOptionPane.YES_NO_OPTION
+            );
+
+            if (result == JOptionPane.YES_OPTION) {
+                scores.clear();
+                ScoreStorage.clearScores();
+                scoreArea.setText("High Scores:\n");
+            }
+        });
+
+        closeButton.addActionListener(e -> dispose());
+
+        panel.add(clearButton);
+        panel.add(closeButton);
+        return panel;
     }
 }
