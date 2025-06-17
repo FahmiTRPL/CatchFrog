@@ -1,16 +1,49 @@
 import java.awt.*;
 import java.awt.event.*;
+import java.io.*;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Random;
 import java.awt.Point;
 import java.awt.Rectangle;
-
 import javax.swing.*;
+import java.util.logging.Logger;
+import java.util.logging.Level;
 
 public class CatchFrog extends JFrame {
     public static void main(String[] args) {
         new MainMenu();
+    }
+}
+
+
+class ScoreStorage {
+    private static final Logger logger = Logger.getLogger(ScoreStorage.class.getName());
+    private static final String FILE_PATH = "highscores.txt";
+
+    public static void saveScores(ArrayList<Integer> scores) {
+        try (PrintWriter writer = new PrintWriter(new FileWriter(FILE_PATH))) {
+            for (int score : scores) {
+                writer.println(score);
+            }
+        } catch (IOException e) {
+            logger.log(Level.SEVERE, "Failed to save scores", e);
+        }
+    }
+
+    public static ArrayList<Integer> loadScores() {
+        ArrayList<Integer> scores = new ArrayList<>();
+        try (BufferedReader reader = new BufferedReader(new FileReader(FILE_PATH))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                try {
+                    scores.add(Integer.parseInt(line.trim()));
+                } catch (NumberFormatException ignored) {}
+            }
+        } catch (IOException e) {
+            logger.log(Level.WARNING, "No scores loaded (file may not exist)", e);
+        }
+        return scores;
     }
 }
 
@@ -43,11 +76,16 @@ class MainMenu extends JFrame {
 }
 
 class GameFrame extends JFrame {
-    ArrayList<Integer> scoreHistory = new ArrayList<>();
+    ArrayList<Integer> scoreHistory;
 
     public GameFrame() {
+        this(ScoreStorage.loadScores());  // ⬅️ muat skor dari file
+    }
+
+    public GameFrame(ArrayList<Integer> scoreHistory) {
+        this.scoreHistory = scoreHistory;
         setTitle("Catch Frog Game");
-        setSize(800, 600);
+        setSize(1280, 720);
         setDefaultCloseOperation(EXIT_ON_CLOSE);
         setLocationRelativeTo(null);
 
@@ -56,6 +94,7 @@ class GameFrame extends JFrame {
         setVisible(true);
     }
 }
+
 
 
 class GamePanel extends JPanel implements ActionListener, KeyListener {
@@ -93,7 +132,8 @@ class GamePanel extends JPanel implements ActionListener, KeyListener {
             if (timeLeft <= 0) {
                 timer.stop();
                 gameTimer.stop();
-                scoreHistory.add(score); // Save score
+                scoreHistory.add(score);                  // ⬅️ tambahkan skor
+                ScoreStorage.saveScores(scoreHistory);    // ⬅️ simpan ke file
                 new GameOverMenu(score, scoreHistory, parent);
             }
             repaint();
@@ -206,9 +246,9 @@ class GameOverMenu extends JFrame {
         retryButton.addActionListener(e -> {
             dispose();
             parent.dispose();
-            GameFrame newGame = new GameFrame();
-            newGame.scoreHistory = history;  // BAWA DATA LAMA
+            new GameFrame(history);  // ⬅️ Gunakan konstruktor dengan parameter!
         });
+
 
         highScoresButton.addActionListener(e -> new HighScoreMenu(history));
         exitButton.addActionListener(e -> System.exit(0));
@@ -225,7 +265,7 @@ class GameOverMenu extends JFrame {
 class HighScoreMenu extends JFrame {
     public HighScoreMenu(ArrayList<Integer> scores) {
         setTitle("High Scores");
-        setSize(400, 300);
+        setSize(800, 600);
         setLocationRelativeTo(null);
         setLayout(new BorderLayout());
 
